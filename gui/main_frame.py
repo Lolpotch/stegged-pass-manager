@@ -1,6 +1,6 @@
 import json
 from tkinter import ttk, messagebox, Toplevel
-from utils import encrypt
+from utils import encrypt, embed_to_image
 
 class MainFrame:
     def __init__(self, root, theme, image_path, password, data):
@@ -86,14 +86,12 @@ class MainFrame:
             self._display_entries()
 
     def _save_to_image(self):
-        try:
-            with open(self.image_path, 'rb') as f:
-                content = f.read().split(b'###DATA###')[0]
-            with open(self.image_path, 'wb') as f:
-                f.write(content + b'\n###DATA###\n' + encrypt(json.dumps(self.data), self.password))
-            messagebox.showinfo("Berhasil", f"Data tersimpan di: {self.image_path}")
-        except Exception as e:
-            messagebox.showerror("Gagal", f"Gagal menyimpan: {e}")
+        is_error = embed_to_image(self.image_path, encrypt(json.dumps(self.data), self.password))
+
+        if is_error:
+            messagebox.showerror("Gagal", "Gagal menyimpan data ke gambar. Pastikan gambar tidak rusak atau formatnya benar.")
+        else:   
+            messagebox.showinfo("Berhasil", f"Data berhasil disimpan di: {self.image_path}")
 
     def _logout(self):
         from gui.login_frame import LoginFrame

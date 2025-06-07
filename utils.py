@@ -26,9 +26,17 @@ def decrypt(enc_data, password):
         return None
 
 def embed_to_image(image_path, encrypted_data):
-    with open(image_path, 'ab') as f:
-        f.write(b'\n###DATA###\n')
-        f.write(encrypted_data)
+    error_occurred = False
+    try:
+        with open(image_path, 'rb') as f:
+            content = f.read().split(b'###DATA###')[0]
+        with open(image_path, 'wb') as f:
+            f.write(content + b'\n###DATA###\n' + encrypted_data)
+    except Exception as e:
+        error_occurred = True
+
+    return error_occurred
+
 
 def extract_from_image(image_path):
     with open(image_path, 'rb') as f:
