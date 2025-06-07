@@ -3,7 +3,7 @@ from tkinter import ttk, filedialog, messagebox
 import json
 import os
 from gui.main_frame import MainFrame
-from utils import decrypt, extract_from_image
+from utils import decrypt, extract_from_image, encrypt, embed_to_image # Import encrypt dan embed_to_image
 
 class LoginFrame:
     def __init__(self, root, theme):
@@ -33,7 +33,11 @@ class LoginFrame:
         ttk.Label(frame, text="Password Master:").pack(pady=(15, 5))
         self.pass_entry = tk.Entry(frame, show="*", fg="black", bg="white", font=self.theme.font)
         self.pass_entry.pack(fill='x', pady=5)
-        ttk.Button(frame, text="Login", command=self._login).pack(fill='x', pady=20)
+
+        ttk.Button(frame, text="Login", command=self._login).pack(fill='x', pady=10)
+        # Tambahkan tombol untuk mengedit/membuat password master
+        ttk.Button(frame, text="Buat/Ganti Master Password", command=self._create_or_edit_master_password).pack(fill='x', pady=5)
+
 
         self.image_path = ''
         self.data = []
@@ -53,13 +57,61 @@ class LoginFrame:
         if raw:
             decrypted = decrypt(raw, password)
             if decrypted:
-                self.data = json.loads(decrypted)
+                try:
+                    self.data = json.loads(decrypted)
+                except json.JSONDecodeError:
+                    messagebox.showerror("Error", "Data tersembunyi rusak atau tidak valid.")
+                    return
             else:
                 messagebox.showerror("Error", "Password salah atau gambar rusak.")
                 return
         else:
-            self.data = []
+            self.data = [] # Jika tidak ada data tersembunyi, inisialisasi sebagai list kosong
         MainFrame(self.root, self.theme, self.image_path, password, self.data)
+
+    def _create_or_edit_master_password(self):
+        if not self.image_path:
+            messagebox.showerror("Error", "Pilih gambar terlebih dahulu untuk membuat atau mengganti master password.")
+            return
+
+        # Kita akan menggunakan MainFrame untuk melakukan edit setelah master password baru diinput
+        # Untuk tujuan ini, kita perlu meminta password master LAMA (jika ada) atau master password BARU.
+        # Karena kita belum login, kita tidak tahu password lama.
+        # Pendekatan terbaik adalah meminta password master LAMA dulu,
+        # mendekripsi data dengan itu, lalu meminta password master BARU.
+
+        temp_password = self.pass_entry.get() # Ambil password yang diinput pengguna
+        if not temp_password:
+            messagebox.showerror("Error", "Masukkan password master yang ada (jika ada) atau password master baru yang Anda inginkan untuk gambar ini.")
+            return
+
+        raw = extract_from_image(self.image_path)
+        current_data = []
+
+        if raw: # Jika ada data tersembunyi di gambar
+            decrypted_data = decrypt(raw, temp_password)
+            if decrypted_data:
+                try:
+                    current_data = json.loads(decrypted_data)
+                except json.JSONDecodeError:
+                    # Ini berarti password yang dimasukkan salah, atau data rusak
+                    messagebox.showerror("Gagal", "Password master yang Anda masukkan tidak cocok dengan data yang ada di gambar.")
+                    return
+            else:
+                # Password salah atau data rusak, tapi ada data
+                messagebox.showerror("Gagal", "Password master yang Anda masukkan salah atau data di gambar rusak. Tidak dapat mengedit master password.")
+                return
+        else:
+            # Tidak ada data tersembunyi di gambar, ini adalah pembuatan master password baru
+            # current_data tetap []
+            pass # Lanjutkan dengan current_data = []
+
+        # Setelah berhasil mendapatkan (atau menginisialisasi) current_data
+        # Kita panggil MainFrame dengan password master yang BARU saja diinput sebagai master password baru
+        # Dan data yang sudah didekripsi (atau kosong)
+        # MainFrame akan menampilkan dialog untuk konfirmasi password master baru dan menyimpannya.
+        MainFrame(self.root, self.theme, self.image_path, temp_password, current_data, is_master_password_edit=True)
+
 
     def clear_root(self):
         for widget in self.root.winfo_children():

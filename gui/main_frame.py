@@ -1,19 +1,27 @@
 import json
 from tkinter import ttk, messagebox, Toplevel
 from utils import encrypt, embed_to_image
+import tkinter as tk # Tambahkan import tk
 
 class MainFrame:
-    def __init__(self, root, theme, image_path, password, data):
+    def __init__(self, root, theme, image_path, password, data, is_master_password_edit=False):
         self.root = root
         self.theme = theme
         self.image_path = image_path
-        self.password = password
+        self.password = password # Ini adalah password master yang sedang digunakan
         self.data = data
+        self.is_master_password_edit = is_master_password_edit
         self._build_main()
 
     def _build_main(self):
         for w in self.root.winfo_children(): w.destroy()
 
+        # Jika kita di mode edit master password, tampilkan dialog khusus
+        if self.is_master_password_edit:
+            self._master_password_edit_dialog()
+            return # Jangan lanjutkan membangun antarmuka utama
+
+        # --- Bagian antarmuka utama (jika bukan mode edit master password) ---
         header = ttk.Frame(self.root)
         header.pack(fill='x', padx=20, pady=10)
         ttk.Label(header, text="Password Tersimpan", font=("Segoe UI", 13, "bold")).pack(side='left')
@@ -36,11 +44,16 @@ class MainFrame:
         for i, e in enumerate(self.data):
             row = ttk.Frame(self.entries_frame)
             row.pack(fill='x', pady=3)
-            ttk.Label(row, text=f"{e['app']} | {e['email']} | {e['password']}", width=60, anchor='w').pack(side='left', padx=5)
+            # Menampilkan password dengan asterisks
+            display_password = '*' * len(e['password']) if e['password'] else ''
+            ttk.Label(row, text=f"{e['app']} | {e['email']} | {display_password}", width=60, anchor='w').pack(side='left', padx=5)
             b_frame = ttk.Frame(row)
             b_frame.pack(side='right')
             ttk.Button(b_frame, text="Edit", command=lambda i=i: self._edit_entry_dialog(i), width=6).pack(side='left', padx=2)
             ttk.Button(b_frame, text="Hapus", command=lambda i=i: self._delete_entry(i), width=6).pack(side='left', padx=2)
+            # Tambahkan tombol "Lihat" untuk menampilkan password asli
+            ttk.Button(b_frame, text="Lihat", command=lambda p=e['password']: messagebox.showinfo("Password", p), width=6).pack(side='left', padx=2)
+
 
     def _edit_entry_dialog(self, i):
         self._entry_dialog("Edit Entri", self.data[i], lambda d: self._update_entry(i, d))
@@ -86,13 +99,70 @@ class MainFrame:
             self._display_entries()
 
     def _save_to_image(self):
-        is_error = embed_to_image(self.image_path, encrypt(json.dumps(self.data), self.password))
+        is_error = embed_to_image(self.image_path, encrypt(json.dumps(self.data).encode('utf-8'), self.password))
 
         if is_error:
             messagebox.showerror("Gagal", "Gagal menyimpan data ke gambar. Pastikan gambar tidak rusak atau formatnya benar.")
-        else:   
+        else:    
             messagebox.showinfo("Berhasil", f"Data berhasil disimpan di: {self.image_path}")
 
     def _logout(self):
         from gui.login_frame import LoginFrame
         LoginFrame(self.root, self.theme)
+
+    # --- FITUR BARU: Edit Master Password ---
+    def _master_password_edit_dialog(self):
+        win = Toplevel(self.root)
+        win.title("Ubah Master Password")
+        win.configure(bg=self.theme.primary)
+        frame = ttk.Frame(win)
+        frame.pack(padx=20, pady=20)
+
+        # Labels dan Entries
+        ttk.Label(frame, text="Password Master Baru:").pack(pady=5)
+        new_pass_entry = tk.Entry(frame, show="*", fg="black", bg="white", font=self.theme.font)
+        new_pass_entry.pack(pady=5)
+
+        ttk.Label(frame, text="Konfirmasi Password Baru:").pack(pady=5)
+        confirm_pass_entry = tk.Entry(frame, show="*", fg="black", bg="white", font=self.theme.font)
+        confirm_pass_entry.pack(pady=5)
+
+        def save_new_master_password():
+            new_password = new_pass_entry.get()
+            confirm_password = confirm_pass_entry.get()
+
+            if not new_password or not confirm_password:
+                messagebox.showerror("Error", "Password baru dan konfirmasi tidak boleh kosong.")
+                return
+            if new_password != confirm_password:
+                messagebox.showerror("Error", "Password baru dan konfirmasi tidak cocok.")
+                return
+            if new_password == self.password:
+                messagebox.showinfo("Informasi", "Password master baru sama dengan yang lama. Tidak ada perubahan yang disimpan.")
+                win.destroy()
+                self._logout() # Kembali ke login
+                return
+
+            # Enkripsi ulang data dengan password master yang baru
+            encrypted_data = encrypt(json.dumps(self.data).encode('utf-8'), new_password)
+            is_error = embed_to_image(self.image_path, encrypted_data)
+
+            if is_error:
+                messagebox.showerror("Gagal", "Gagal menyimpan data ke gambar dengan password baru. Pastikan gambar tidak rusak.")
+            else:
+                messagebox.showinfo("Berhasil", "Password master berhasil diubah dan data berhasil disimpan.")
+                self.password = new_password # Update password master di instance MainFrame
+                win.destroy()
+                self._logout() # Kembali ke layar login
+
+        ttk.Button(frame, text="Simpan Password Master Baru", command=save_new_master_password).pack(pady=15)
+        # Menangani penutupan window edit master password
+        win.protocol("WM_DELETE_WINDOW", lambda: self._handle_master_password_dialog_close(win))
+        self.root.wait_window(win) # Tunggu sampai dialog ditutup
+
+    def _handle_master_password_dialog_close(self, dialog_window):
+        # Jika dialog edit master password ditutup tanpa menyimpan,
+        # kita harus kembali ke layar login
+        dialog_window.destroy()
+        messagebox.showinfo("Informasi", "Operasi perubahan master password dibatalkan.")
+        self._logout() # Kembali ke layar login
