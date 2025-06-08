@@ -1,27 +1,21 @@
 import json
 from tkinter import ttk, messagebox, Toplevel
 from utils import encrypt, embed_to_image
-import tkinter as tk # Tambahkan import tk
+import tkinter as tk
 
 class MainFrame:
-    def __init__(self, root, theme, image_path, password, data, is_master_password_edit=False):
+    # Hapus parameter is_master_password_edit karena tidak lagi diperlukan di sini
+    def __init__(self, root, theme, image_path, password, data):
         self.root = root
         self.theme = theme
         self.image_path = image_path
         self.password = password # Ini adalah password master yang sedang digunakan
         self.data = data
-        self.is_master_password_edit = is_master_password_edit
         self._build_main()
 
     def _build_main(self):
         for w in self.root.winfo_children(): w.destroy()
 
-        # Jika kita di mode edit master password, tampilkan dialog khusus
-        if self.is_master_password_edit:
-            self._master_password_edit_dialog()
-            return # Jangan lanjutkan membangun antarmuka utama
-
-        # --- Bagian antarmuka utama (jika bukan mode edit master password) ---
         header = ttk.Frame(self.root)
         header.pack(fill='x', padx=20, pady=10)
         ttk.Label(header, text="Password Tersimpan", font=("Segoe UI", 13, "bold")).pack(side='left')
@@ -30,6 +24,8 @@ class MainFrame:
         btn_frame.pack(side='right')
         ttk.Button(btn_frame, text="Tambah Baru", command=self._add_entry_dialog).pack(side='left', padx=5)
         ttk.Button(btn_frame, text="Simpan ke Gambar", command=self._save_to_image).pack(side='left', padx=5)
+        # Tambahkan tombol untuk mengubah master password di MainFrame
+        ttk.Button(btn_frame, text="Ubah Master Password", command=self._master_password_edit_dialog).pack(side='left', padx=5)
         ttk.Button(btn_frame, text="Logout", command=self._logout).pack(side='left', padx=5)
 
         self.entries_frame = ttk.Frame(self.root)
@@ -110,59 +106,78 @@ class MainFrame:
         from gui.login_frame import LoginFrame
         LoginFrame(self.root, self.theme)
 
-    # --- FITUR BARU: Edit Master Password ---
+    # --- FITUR EDIT MASTER PASSWORD (dipindahkan ke MainFrame) ---
     def _master_password_edit_dialog(self):
-        win = Toplevel(self.root)
-        win.title("Ubah Master Password")
-        win.configure(bg=self.theme.primary)
-        frame = ttk.Frame(win)
+        # Buat jendela dialog master password
+        self.master_pass_dialog = Toplevel(self.root)
+        self.master_pass_dialog.title("Ubah Master Password")
+        self.master_pass_dialog.configure(bg=self.theme.primary)
+        self.master_pass_dialog.grab_set() # Nonaktifkan interaksi dengan jendela utama sementara dialog terbuka
+
+        frame = ttk.Frame(self.master_pass_dialog)
         frame.pack(padx=20, pady=20)
 
         # Labels dan Entries
+        ttk.Label(frame, text="Password Master Lama:").pack(pady=5)
+        self.old_pass_entry = tk.Entry(frame, show="*", fg="black", bg="white", font=self.theme.font)
+        self.old_pass_entry.pack(pady=5)
+
         ttk.Label(frame, text="Password Master Baru:").pack(pady=5)
-        new_pass_entry = tk.Entry(frame, show="*", fg="black", bg="white", font=self.theme.font)
-        new_pass_entry.pack(pady=5)
+        self.new_pass_entry = tk.Entry(frame, show="*", fg="black", bg="white", font=self.theme.font)
+        self.new_pass_entry.pack(pady=5)
 
         ttk.Label(frame, text="Konfirmasi Password Baru:").pack(pady=5)
-        confirm_pass_entry = tk.Entry(frame, show="*", fg="black", bg="white", font=self.theme.font)
-        confirm_pass_entry.pack(pady=5)
+        self.confirm_pass_entry = tk.Entry(frame, show="*", fg="black", bg="white", font=self.theme.font)
+        self.confirm_pass_entry.pack(pady=5)
 
-        def save_new_master_password():
-            new_password = new_pass_entry.get()
-            confirm_password = confirm_pass_entry.get()
-
-            if not new_password or not confirm_password:
-                messagebox.showerror("Error", "Password baru dan konfirmasi tidak boleh kosong.")
-                return
-            if new_password != confirm_password:
-                messagebox.showerror("Error", "Password baru dan konfirmasi tidak cocok.")
-                return
-            if new_password == self.password:
-                messagebox.showinfo("Informasi", "Password master baru sama dengan yang lama. Tidak ada perubahan yang disimpan.")
-                win.destroy()
-                self._logout() # Kembali ke login
-                return
-
-            # Enkripsi ulang data dengan password master yang baru
-            encrypted_data = encrypt(json.dumps(self.data).encode('utf-8'), new_password)
-            is_error = embed_to_image(self.image_path, encrypted_data)
-
-            if is_error:
-                messagebox.showerror("Gagal", "Gagal menyimpan data ke gambar dengan password baru. Pastikan gambar tidak rusak.")
-            else:
-                messagebox.showinfo("Berhasil", "Password master berhasil diubah dan data berhasil disimpan.")
-                self.password = new_password # Update password master di instance MainFrame
-                win.destroy()
-                self._logout() # Kembali ke layar login
-
-        ttk.Button(frame, text="Simpan Password Master Baru", command=save_new_master_password).pack(pady=15)
+        ttk.Button(frame, text="Simpan Password Master Baru", command=self._save_new_master_password).pack(pady=15)
+        
         # Menangani penutupan window edit master password
-        win.protocol("WM_DELETE_WINDOW", lambda: self._handle_master_password_dialog_close(win))
-        self.root.wait_window(win) # Tunggu sampai dialog ditutup
+        self.master_pass_dialog.protocol("WM_DELETE_WINDOW", self._handle_master_password_dialog_close)
+        
+        # Tunggu sampai dialog ditutup
+        self.root.wait_window(self.master_pass_dialog)
 
-    def _handle_master_password_dialog_close(self, dialog_window):
-        # Jika dialog edit master password ditutup tanpa menyimpan,
-        # kita harus kembali ke layar login
-        dialog_window.destroy()
-        messagebox.showinfo("Informasi", "Operasi perubahan master password dibatalkan.")
-        self._logout() # Kembali ke layar login
+    def _save_new_master_password(self):
+        old_password = self.old_pass_entry.get()
+        new_password = self.new_pass_entry.get()
+        confirm_password = self.confirm_pass_entry.get()
+
+        # Validasi password lama
+        if old_password != self.password:
+            messagebox.showerror("Error", "Password master lama tidak cocok.", parent=self.master_pass_dialog)
+            return
+
+        # Validasi password baru
+        if not new_password or not confirm_password:
+            messagebox.showerror("Error", "Password baru dan konfirmasi tidak boleh kosong.", parent=self.master_pass_dialog)
+            return
+        if new_password != confirm_password:
+            messagebox.showerror("Error", "Password baru dan konfirmasi tidak cocok.", parent=self.master_pass_dialog)
+            return
+        if new_password == old_password: # Cek jika password baru sama dengan password lama
+             messagebox.showinfo("Informasi", "Password master baru sama dengan yang lama. Tidak ada perubahan yang disimpan.", parent=self.master_pass_dialog)
+             self._handle_master_password_dialog_close() # Tutup dialog dan logout
+             return
+
+        # Enkripsi ulang data dengan password master yang baru
+        encrypted_data = encrypt(json.dumps(self.data).encode('utf-8'), new_password)
+        is_error = embed_to_image(self.image_path, encrypted_data)
+
+        if is_error:
+            messagebox.showerror("Gagal", "Gagal menyimpan data ke gambar dengan password baru. Pastikan gambar tidak rusak.", parent=self.master_pass_dialog)
+        else:
+            messagebox.showinfo("Berhasil", "Password master berhasil diubah dan data berhasil disimpan.", parent=self.master_pass_dialog)
+            self.password = new_password # Update password master di instance MainFrame
+            self._handle_master_password_dialog_close() # Tutup dialog dan logout
+
+    def _handle_master_password_dialog_close(self):
+        # Lepaskan "grab" dari jendela dialog
+        if self.master_pass_dialog.winfo_exists(): # Cek apakah dialog masih ada
+            self.master_pass_dialog.grab_release()
+            self.master_pass_dialog.destroy()
+        
+        # Selalu kembali ke layar login setelah dialog master password ditutup
+        # Ini penting agar aplikasi menggunakan password baru untuk login selanjutnya
+        self._logout()
+        # Tidak perlu messagebox info "dibatalkan" jika kita selalu logout
