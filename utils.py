@@ -1,6 +1,4 @@
 import base64
-import json
-import os
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 
@@ -31,9 +29,9 @@ def embed_to_image(image_path, encrypted_data):
     error_occurred = False
     try:
         with open(image_path, 'rb') as f:
-            content = f.read().split(b'###DATA###')[0]
+            content = f.read().split(b'###DOHNA###')[0]
         with open(image_path, 'wb') as f:
-            f.write(content + b'\n###DATA###\n' + encrypted_data)
+            f.write(content + b'\n###DOHNA###\n' + encrypted_data)
     except Exception as e:
         error_occurred = True
 
@@ -43,6 +41,6 @@ def embed_to_image(image_path, encrypted_data):
 def extract_from_image(image_path):
     with open(image_path, 'rb') as f:
         content = f.read()
-        if b'###DATA###' in content:
-            return content.split(b'###DATA###')[-1]
+        if b'###DOHNA###' in content:
+            return content.split(b'###DOHNA###')[-1]
         return None
